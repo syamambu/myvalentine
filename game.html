@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Love Meter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #1a0a0c;
+            overflow: hidden;
+            touch-action: none;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100%;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        canvas {
+            border: 4px solid #ff4d6d;
+            border-radius: 20px;
+            box-shadow: 0 0 50px rgba(255, 77, 109, 0.3);
+            background: radial-gradient(circle at center, #4a0e1c 0%, #1a0a0c 100%);
+            max-width: 95vw;
+            max-height: 95vh;
+        }
+
+        .ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(0%);
+            margin-left: -150px;
+            width: 300px;
+            color: #ff85a1;
+            text-align: center;
+            pointer-events: none;
+            text-shadow: 0 0 15px #ff4d6d;
+        }
+
+        .controls-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #8c2f39;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="game-container">
+        <div class="ui-panel">
+            <h1 class="text-4xl font-bold tracking-widest mb-1">LOVE METER</h1>
+            <div class="text-2xl font-mono" id="score-display">METER: 000000</div>
+        </div>
+
+        <canvas id="pinballCanvas"></canvas>
+
+        <div class="controls-hint">
+            [←] LEFT | [→] RIGHT | [SPACE] SEND LOVE<br>
+            <span class="text-pink-400">Tap sides to flip • Space to launch</span>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('pinballCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score-display');
+
+        // Game Constants
+        const WIDTH = 450;
+        const HEIGHT = 750;
+        const GRAVITY = 0.22;
+        const FRICTION = 0.996;
+        const BALL_RADIUS = 14;
+
+        // LARGE HANDS CONSTANTS
+        const FLIPPER_LENGTH = 135;
+        const FLIPPER_WIDTH = 26;
+        const FLIPPER_SPEED = 0.35;
+        const MAX_FLIPPER_ANGLE = Math.PI / 4;
+
+        // State
+        let score = 0;
+        let ball = { x: WIDTH / 2, y: HEIGHT / 2, vx: 0, vy: 0, radius: BALL_RADIUS, active: false };
+        let keys = { arrowleft: false, arrowright: false, space: false };
+
+        // Valentine Bumpers
+        let bumpers = [
+            { x: 150, y: 160, r: 35, color: '#ff4d6d', hit: 0 },
+            { x: 300, y: 160, r: 35, color: '#ff4d6d', hit: 0 },
+            { x: 225, y: 300, r: 45, color: '#ff758f', hit: 0 },
+            { x: 100, y: 420, r: 30, color: '#c9184a', hit: 0 },
+            { x: 350, y: 420, r: 30, color: '#c9184a', hit: 0 }
+        ];
+
+        let flippers = [
+            { x: 80, y: HEIGHT - 85, angle: 0, targetAngle: 0, side: 'left', key: 'arrowleft' },
+            { x: 370, y: HEIGHT - 85, angle: 0, targetAngle: 0, side: 'right', key: 'arrowright' }
+        ];
+
+        let particles = [];
+
+        function init() {
+            canvas.width = WIDTH;
+            canvas.height = HEIGHT;
+            resetBall();
+            requestAnimationFrame(update);
+        }
+
+        function resetBall() {
+            ball.x = WIDTH / 2;
+            ball.y = HEIGHT / 2;
+            ball.vx = 0;
+            ball.vy = 0;
+            ball.active = false;
+        }
+
+        function spawnLove(x, y, color) {
+            for (let i = 0; i < 15; i++) {
+                particles.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 12,
+                    vy: (Math.random() - 0.5) * 12,
+                    size: Math.random() * 10 + 5,
+                    life: 1.0,
+                    color: color,
+                    rot: Math.random() * Math.PI * 2
+                });
+            }
+        }
+
+        function drawHeart(x, y, size, color, alpha = 1, rotation = 0) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(rotation);
+            ctx.globalAlpha = alpha;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            const topCurve = size * 0.3;
+            ctx.moveTo(0, topCurve);
+            ctx.bezierCurveTo(-size / 2, -size / 2, -size, topCurve, 0, size);
+            ctx.bezierCurveTo(size, topCurve, size / 2, -size / 2, 0, topCurve);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'arrowleft') keys.arrowleft = true;
+            if (key === 'arrowright') keys.arrowright = true;
+            if (key === ' ') keys.space = true;
+        });
+
+        window.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (key === 'arrowleft') keys.arrowleft = false;
+            if (key === 'arrowright') keys.arrowright = false;
+            if (key === ' ') keys.space = false;
+        });
+
+        function getDistance(x1, y1, x2, y2) {
+            return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+        }
+
+        function update() {
+            ctx.fillStyle = '#1a0a0c';
+            ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+            flippers.forEach(f => {
+                const up = keys[f.key];
+                if (f.side === 'left') {
+                    f.targetAngle = up ? -MAX_FLIPPER_ANGLE : MAX_FLIPPER_ANGLE / 2.5;
+                } else {
+                    f.targetAngle = up ? MAX_FLIPPER_ANGLE : -MAX_FLIPPER_ANGLE / 2.5;
+                }
+                f.angle += (f.targetAngle - f.angle) * FLIPPER_SPEED;
+            });
+
+            if (!ball.active && keys.space) {
+                ball.vy = -14;
+                ball.vx = (Math.random() - 0.5) * 5;
+                ball.active = true;
+                spawnLove(ball.x, ball.y, '#ffffff');
+            }
+
+            if (ball.active) {
+                ball.vy += GRAVITY;
+                ball.vx *= FRICTION;
+                ball.vy *= FRICTION;
+                ball.x += ball.vx;
+                ball.y += ball.vy;
+
+                if (ball.x < ball.radius) { ball.x = ball.radius; ball.vx *= -0.7; }
+                if (ball.x > WIDTH - ball.radius) { ball.x = WIDTH - ball.radius; ball.vx *= -0.7; }
+                if (ball.y < ball.radius) { ball.y = ball.radius; ball.vy *= -0.7; }
+
+                bumpers.forEach(b => {
+                    const dist = getDistance(ball.x, ball.y, b.x, b.y);
+                    if (dist < ball.radius + b.r) {
+                        const angle = Math.atan2(ball.y - b.y, ball.x - b.x);
+                        const force = 14;
+                        ball.vx = Math.cos(angle) * force;
+                        ball.vy = Math.sin(angle) * force;
+                        b.hit = 15;
+                        score += 500;
+                        spawnLove(b.x, b.y, b.color);
+                        scoreElement.innerText = `METER: ${score.toString().padStart(6, '0')}`;
+                    }
+                    if (b.hit > 0) b.hit--;
+                });
+
+                flippers.forEach(f => {
+                    const dir = (f.side === 'right' ? -1 : 1);
+                    const tipX = f.x + Math.cos(f.angle) * FLIPPER_LENGTH * dir;
+                    const tipY = f.y + Math.sin(f.angle) * FLIPPER_LENGTH * dir;
+
+                    const dx = tipX - f.x;
+                    const dy = tipY - f.y;
+                    const lenSq = dx * dx + dy * dy;
+                    let t = ((ball.x - f.x) * dx + (ball.y - f.y) * dy) / lenSq;
+                    t = Math.max(0, Math.min(1, t));
+
+                    const closestX = f.x + t * dx;
+                    const closestY = f.y + t * dy;
+                    const dist = getDistance(ball.x, ball.y, closestX, closestY);
+
+                    if (dist < ball.radius + FLIPPER_WIDTH / 2) {
+                        const angle = Math.atan2(ball.y - closestY, ball.x - closestX);
+                        const speed = Math.sqrt(ball.vx ** 2 + ball.vy ** 2);
+                        const bounce = keys[f.key] ? 20 : 7;
+
+                        ball.vx = Math.cos(angle) * (speed + bounce) * 0.65;
+                        ball.vy = Math.sin(angle) * (speed + bounce) * 0.95;
+
+                        ball.x = closestX + Math.cos(angle) * (ball.radius + FLIPPER_WIDTH / 2 + 2);
+                        ball.y = closestY + Math.sin(angle) * (ball.radius + FLIPPER_WIDTH / 2 + 2);
+
+                        if (keys[f.key]) spawnLove(closestX, closestY, '#ff85a1');
+                    }
+                });
+
+                if (ball.y > HEIGHT + 100) resetBall();
+            }
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        function draw() {
+            ctx.strokeStyle = '#4a0e1c';
+            ctx.lineWidth = 10;
+            ctx.strokeRect(0, 0, WIDTH, HEIGHT);
+
+            particles.forEach((p, i) => {
+                p.x += p.vx; p.y += p.vy;
+                p.vy -= 0.05;
+                p.life -= 0.015;
+                if (p.life <= 0) particles.splice(i, 1);
+                drawHeart(p.x, p.y, p.size, p.color, p.life, p.rot + (1 - p.life));
+            });
+
+            // Draw Circular Bumpers
+            bumpers.forEach(b => {
+                const pulse = b.hit / 15;
+                ctx.save();
+                ctx.shadowBlur = 20 + (pulse * 30);
+                ctx.shadowColor = b.color;
+
+                ctx.strokeStyle = b.color;
+                ctx.lineWidth = 3 + (pulse * 6);
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, b.r + (pulse * 8), 0, Math.PI * 2);
+                ctx.stroke();
+
+                ctx.fillStyle = b.color;
+                ctx.globalAlpha = 0.15 + (pulse * 0.2);
+                ctx.fill();
+                ctx.globalAlpha = 1.0;
+
+                const heartSize = (b.r * 0.5) + (pulse * 15);
+                drawHeart(b.x, b.y, heartSize, b.color, 0.8 + pulse);
+
+                ctx.restore();
+            });
+
+            // Draw Flippers
+            flippers.forEach(f => {
+                ctx.save();
+                ctx.translate(f.x, f.y);
+                ctx.rotate(f.angle);
+                ctx.shadowBlur = 20;
+                ctx.shadowColor = '#ff4d6d';
+                ctx.fillStyle = '#2d0a10';
+                ctx.strokeStyle = '#ff4d6d';
+                ctx.lineWidth = 4;
+                const dir = f.side === 'left' ? 1 : -1;
+                ctx.beginPath();
+                ctx.roundRect(0, -FLIPPER_WIDTH / 2, dir * FLIPPER_LENGTH, FLIPPER_WIDTH, FLIPPER_WIDTH / 2);
+                ctx.fill();
+                ctx.stroke();
+                drawHeart(dir * FLIPPER_LENGTH / 2, 0, 10, '#ff4d6d', 1, dir * Math.PI / 2);
+                ctx.restore();
+            });
+
+            // Draw Ball
+            const drawBallObject = (x, y, radius, alpha = 1) => {
+                ctx.save();
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = '#ffffff';
+                ctx.globalAlpha = alpha;
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+
+                const heartPulse = 0.8 + Math.sin(Date.now() / 200) * 0.1;
+                drawHeart(x, y, radius * heartPulse, '#ff4d6d', alpha);
+                ctx.restore();
+            };
+
+            if (ball.active) {
+                drawBallObject(ball.x, ball.y, ball.radius);
+            } else {
+                ctx.fillStyle = '#4a0e1c';
+                ctx.fillRect(ball.x - 25, ball.y + 20, 50, 6);
+                drawBallObject(ball.x, ball.y, ball.radius, 0.7);
+            }
+
+            ctx.strokeStyle = '#4a0e1c';
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(0, 100);
+            ctx.quadraticCurveTo(WIDTH / 2, -30, WIDTH, 100);
+            ctx.stroke();
+        }
+
+        init();
+    </script>
+</body>
+
+</html>
