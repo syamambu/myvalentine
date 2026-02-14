@@ -338,61 +338,49 @@
     // --- 2. The "No" Button Logic ---
     const noBtn = document.getElementById('noBtn');
     const yesBtn = document.getElementById('yesBtn');
-    let isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    // Unified function to move the button
+    function moveButton() {
+      // Get viewport dimensions
+      const containerWidth = window.innerWidth;
+      const containerHeight = window.innerHeight;
+
+      // Button dimensions
+      const btnWidth = noBtn.offsetWidth;
+      const btnHeight = noBtn.offsetHeight;
+
+      // Calculate random position within viewport, keeping padding
+      const padding = 20;
+      const randomX = Math.random() * (containerWidth - btnWidth - padding * 2) + padding;
+      const randomY = Math.random() * (containerHeight - btnHeight - padding * 2) + padding;
+
+      // Apply fixed positioning so it works regardless of original layout
+      noBtn.style.position = 'fixed';
+      noBtn.style.left = randomX + 'px';
+      noBtn.style.top = randomY + 'px';
+
+      // Change text occasionally for fun
+      const funTexts = ["Really?", "Think Again!", "Try Harder!", "Nope!", "Wrong Button!"];
+      noBtn.innerText = funTexts[Math.floor(Math.random() * funTexts.length)];
+
+      // Change color to warn
+      noBtn.classList.remove('bg-red-900', 'text-red-300');
+      noBtn.classList.add('bg-black', 'text-white');
+    }
 
     // Desktop: Run away logic
-    if (!isMobile) {
-      noBtn.addEventListener('mouseover', function () {
-        // Get viewport dimensions
-        const containerWidth = window.innerWidth;
-        const containerHeight = window.innerHeight;
+    noBtn.addEventListener('mouseover', moveButton);
 
-        // Button dimensions
-        const btnWidth = noBtn.offsetWidth;
-        const btnHeight = noBtn.offsetHeight;
-
-        // Calculate random position within viewport, keeping padding
-        const padding = 50;
-        const randomX = Math.random() * (containerWidth - btnWidth - padding * 2) + padding;
-        const randomY = Math.random() * (containerHeight - btnHeight - padding * 2) + padding;
-
-        // Apply absolute positioning (this triggers only on hover on desktop)
-        noBtn.style.position = 'fixed';
-        noBtn.style.left = randomX + 'px';
-        noBtn.style.top = randomY + 'px';
-
-        // Change text occasionally for fun
-        const funTexts = ["Really?", "Think Again!", "Try Harder!", "Nope!", "Wrong Button!"];
-        noBtn.innerText = funTexts[Math.floor(Math.random() * funTexts.length)];
-
-        // Change color to warn
-        noBtn.classList.remove('bg-red-900', 'text-red-300');
-        noBtn.classList.add('bg-black', 'text-white');
-      });
-    }
-
-    // Mobile: Shake logic (Since you can't "hover" on mobile, we use touchstart)
-    noBtn.addEventListener('click', function (e) {
-      e.preventDefault(); // Prevent click
-      triggerShake();
-    });
-
+    // Mobile: Run away logic on touch
     noBtn.addEventListener('touchstart', function (e) {
-      e.preventDefault(); // Prevent default touch behavior
-      triggerShake();
+      e.preventDefault(); // Prevent standard touch behavior
+      moveButton();
     });
 
-    function triggerShake() {
-      noBtn.classList.add('shake-animation');
-
-      // Revert text to "No" just in case desktop changed it
-      noBtn.innerText = "No";
-
-      // Remove animation class after it plays so it can be triggered again
-      setTimeout(() => {
-        noBtn.classList.remove('shake-animation');
-      }, 500);
-    }
+    // Prevent click if someone manages to click it
+    noBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+    });
 
 
     // --- 3. The "Yes" Button Logic & Confetti ---
