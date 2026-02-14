@@ -3,8 +3,8 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Love Meter</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Sami's Love Meter</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         body {
@@ -53,6 +53,7 @@
             color: #8c2f39;
             font-size: 0.9rem;
             text-align: center;
+            width: 100%;
         }
     </style>
 </head>
@@ -69,7 +70,7 @@
 
         <div class="controls-hint">
             [←] LEFT | [→] RIGHT | [SPACE] SEND LOVE<br>
-            <span class="text-pink-400">Tap sides to flip • Space to launch</span>
+            <span class="text-pink-400">Tap sides to flip • Tap to launch</span>
         </div>
     </div>
 
@@ -156,6 +157,7 @@
             ctx.restore();
         }
 
+        // Desktop Keyboard Handling
         window.addEventListener('keydown', (e) => {
             const key = e.key.toLowerCase();
             if (key === 'arrowleft') keys.arrowleft = true;
@@ -169,6 +171,45 @@
             if (key === 'arrowright') keys.arrowright = false;
             if (key === ' ') keys.space = false;
         });
+
+        // Mobile Touch Handling
+        const handleTouch = (e) => {
+            // Prevent default actions like scrolling or zooming
+            if (e.cancelable) e.preventDefault();
+
+            // Reset flipper states then recalculate based on active touches
+            keys.arrowleft = false;
+            keys.arrowright = false;
+
+            const mid = window.innerWidth / 2;
+
+            for (let i = 0; i < e.touches.length; i++) {
+                const touchX = e.touches[i].clientX;
+                if (touchX < mid) {
+                    keys.arrowleft = true;
+                } else {
+                    keys.arrowright = true;
+                }
+            }
+
+            // Tap to launch: if there is at least one finger down and the ball isn't active
+            if (!ball.active && e.touches.length > 0) {
+                keys.space = true;
+            }
+        };
+
+        window.addEventListener('touchstart', handleTouch, { passive: false });
+        window.addEventListener('touchmove', handleTouch, { passive: false });
+        window.addEventListener('touchend', (e) => {
+            // Recalculate which flippers should stay up based on remaining fingers
+            if (e.touches.length === 0) {
+                keys.arrowleft = false;
+                keys.arrowright = false;
+                keys.space = false;
+            } else {
+                handleTouch(e);
+            }
+        }, { passive: false });
 
         function getDistance(x1, y1, x2, y2) {
             return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
@@ -188,10 +229,12 @@
                 f.angle += (f.targetAngle - f.angle) * FLIPPER_SPEED;
             });
 
+            // Launch Logic
             if (!ball.active && keys.space) {
                 ball.vy = -14;
                 ball.vx = (Math.random() - 0.5) * 5;
                 ball.active = true;
+                keys.space = false; // Reset launch key
                 spawnLove(ball.x, ball.y, '#ffffff');
             }
 
